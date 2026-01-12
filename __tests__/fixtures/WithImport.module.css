@@ -1,0 +1,5 @@
+@import "./shared.css";
+
+.local-class {
+  background: blue;
+}

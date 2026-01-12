@@ -1,0 +1,13 @@
+@import "./shared.css";
+
+.btn {
+  padding: 0.5rem 1rem;
+}
+
+// SCSS comments work and don'd break with an error
+/* CSS comments work too */
+/* Multiline comments work 
+as well */
+.foo {
+  color: red;
+}

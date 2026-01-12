@@ -3,26 +3,54 @@
   "description": "Typed CSS Modules for ReScript",
   "version": "0.1.0",
   "license": "MIT",
+  "type": "module",
+  "bin": {
+    "css-to-rescript": "./dist/css-to-rescript.js"
+  },
   "engines": {
     "node": ">=22.12.0",
     "yarn": ">=4.5.3"
   },
+  "files": [
+    "dist",
+    "src",
+    "__tests__/.gitkeep",
+    "rescript.json"
+  ],
   "scripts": {
     "rescript:clean": "yarn rescript clean",
     "rescript:build": "yarn rescript build",
-    "rescript:dev": "cd ../..; RES_LOGGER=ReScriptLogger.Universal RES_LOG=info yarn rescript watch",
-    "clean": "yarn rescript:clean",
-    "build": "yarn rescript:build",
-    "dev": "yarn rescript:dev"
+    "rescript:dev": "RES_LOGGER=ReScriptLogger.Universal RES_LOG=info yarn rescript watch",
+    "esbuild:clean": "rm -rf dist",
+    "esbuild:build": "yarn esbuild src/CssToRescript.bs.mjs --bundle --platform=node --format=esm --outfile=dist/css-to-rescript.js --banner:js=\"#!/usr/bin/env node\" --inject:./src/require-shim.mjs && yarn esbuild:chmod",
+    "esbuild:chmod": "chmod +x dist/css-to-rescript.js",
+    "esbuild:dev": "yarn nodemon -e res -e CssModule.res -x \"yarn esbuild:build\"",
+    "fixtures:clean": "rm -rf __tests__/fixtures/**/*.res",
+    "fixtures:build": "dist/css-to-rescript.js __tests__/fixtures",
+    "fixtures:dev": "yarn nodemon -e res -e CssModule.res -x \"yarn fixtures:build\"",
+    "clean": "yarn rescript:clean && yarn esbuild:clean && yarn fixtures:clean",
+    "build": "yarn rescript:build && yarn esbuild:build && yarn fixtures:build",
+    "dev": "yarn build & yarn rescript:dev && yarn esbuild:dev && yarn fixtures:dev",
+    "yalc:dev": "yarn rescript:dev & yarn esbuild:dev & yarn fixtures:dev & yarn nodemon -x \"yalc push\"",
+    "yalc:push": "yarn nodemon -e res -x \"yalc push\""
   },
   "devDependencies": {
-    "rescript": "^12.0.2"
+    "auto-changelog": "^2.4.0",
+    "esbuild": "^0.27.2",
+    "nodemon": "^3.0.1",
+    "rescript": "^12.1.0"
   },
   "peerDependencies": {
-    "rescript": "^12.0.2"
+    "rescript": "^12.1.0"
   },
   "dependencies": {
     "@rescript/core": "^1.6.1",
+    "chokidar": "^5.0.0",
+    "meow": "^14.0.0",
+    "postcss": "^8.5.6",
+    "postcss-import": "^16.1.1",
+    "postcss-modules": "^6.0.1",
+    "postcss-scss": "^4.0.9",
     "rescript-nodejs": "^16.1.0"
   },
   "packageManager": "yarn@4.12.0"
