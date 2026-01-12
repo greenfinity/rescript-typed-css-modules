@@ -1,0 +1,29 @@
+{
+  "name": "@greenfinity/rescript-typed-css-modules",
+  "description": "Typed CSS Modules for ReScript",
+  "version": "0.1.0",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0",
+    "yarn": ">=4.5.3"
+  },
+  "scripts": {
+    "rescript:clean": "yarn rescript clean",
+    "rescript:build": "yarn rescript build",
+    "rescript:dev": "cd ../..; RES_LOGGER=ReScriptLogger.Universal RES_LOG=info yarn rescript watch",
+    "clean": "yarn rescript:clean",
+    "build": "yarn rescript:build",
+    "dev": "yarn rescript:dev"
+  },
+  "devDependencies": {
+    "rescript": "^12.0.2"
+  },
+  "peerDependencies": {
+    "rescript": "^12.0.2"
+  },
+  "dependencies": {
+    "@rescript/core": "^1.6.1",
+    "rescript-nodejs": "^16.1.0"
+  },
+  "packageManager": "yarn@4.12.0"
+}

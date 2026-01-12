@@ -1,0 +1,30 @@
+{
+  "name": "@greenfinity/rescript-typed-css-modules",
+  "sources": [
+    {
+      "dir": "src",
+      "subdirs": true
+    },
+    {
+      "dir": "__tests__",
+      "subdirs": true,
+      "type": "dev"
+    }
+  ],
+  "warnings": {
+    "number": "-3",
+    "error": "+101"
+  },
+  "suffix": ".bs.mjs",
+  "namespace": true,
+  "compiler-flags": ["-bs-no-version-header", "-open RescriptCore"],
+  "package-specs": [
+    {
+      "module": "esmodule",
+      "in-source": true
+    }
+  ],
+  "dependencies": ["@rescript/core", "rescript-nodejs"],
+  "dev-dependencies": [],
+  "ppx-flags": []
+}

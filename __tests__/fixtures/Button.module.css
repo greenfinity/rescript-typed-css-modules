@@ -1,0 +1,18 @@
+.btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-lg {
+  padding: 1rem 2rem;
+}
+
+.btn-sm {
+  padding: 0.25rem 0.5rem;
+}
+
+.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

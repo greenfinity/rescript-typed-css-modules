@@ -1,0 +1,41 @@
+.card {
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.card-body {
+  margin-top: 0.5rem;
+}
+
+.card-title {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.btn-primary {
+  background: blue;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: darkblue;
+}
+
+.active {
+  border: 2px solid green;
+}
+
+/* Edge cases */
+._private {
+  display: none;
+}
+
+.type {
+  /* ReScript keyword */
+  color: red;
+}
+
+.match {
+  /* Another keyword */
+  color: orange;
+}
