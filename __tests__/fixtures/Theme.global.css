@@ -1,0 +1,12 @@
+/* Global theme styles */
+.dark-mode {
+  background: #1a1a1a;
+}
+
+.light-mode {
+  background: #ffffff;
+}
+
+.primary-color {
+  color: blue;
+}

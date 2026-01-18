@@ -1,0 +1,10 @@
+@import "./shared.css";
+
+.btn {
+  padding: 0.5rem 1rem;
+}
+
+/* .external-class will also be available as a field of the css object */
+:global(.external-class) {
+  color: red;
+}

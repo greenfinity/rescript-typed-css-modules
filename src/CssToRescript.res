@@ -1,144 +1,228 @@
 // CSS Modules to ReScript converter
-// Extracts class names from .module.css/.module.scss files and generates ReScript bindings
+// Extracts class names from .module.css/.module.scss and .global.css/.global.scss files
+// and generates ReScript bindings
 
-module Node = {
-  module Fs = {
-    @module("fs") external readFileSync: (string, string) => string = "readFileSync"
-    @module("fs") external writeFileSync: (string, string) => unit = "writeFileSync"
-    @module("fs") external statSync: string => {"isFile": unit => bool, "isDirectory": unit => bool} = "statSync"
-    @module("fs") external readdirSync: (string, {"withFileTypes": bool}) => array<{"name": string, "isDirectory": unit => bool}> = "readdirSync"
+module Meow = {
+  type flag = {
+    @as("type") type_: string,
+    shortFlag?: string,
+    default?: bool,
   }
 
-  module Path = {
-    @module("path") external basename: string => string = "basename"
-    @module("path") external dirname: string => string = "dirname"
-    @module("path") external join: (string, string) => string = "join"
+  type flags = {"watch": flag, "outputDir": flag, "skipInitial": flag}
+
+  type importMeta
+
+  type options = {
+    importMeta: importMeta,
+    flags: flags,
+    allowUnknownFlags?: bool,
   }
 
-  module Process = {
-    @scope("process") @val external argv: array<string> = "argv"
-    @scope("process") external exit: int => unit = "exit"
+  type result = {
+    input: array<string>,
+    flags: {"watch": bool, "outputDir": option<string>, "skipInitial": bool},
+    showHelp: unit => unit,
   }
+
+  @module("meow") external make: (string, options) => result = "default"
+
+  @val external importMeta: importMeta = "import.meta"
 }
 
-// ReScript reserved words that need escaping
-let rescriptKeywords = [
-  "and", "as", "assert", "await", "catch", "constraint", "downto", "else",
-  "exception", "external", "false", "for", "fun", "functor", "if", "in",
-  "include", "inherit", "initializer", "land", "lazy", "let", "lor", "lsl",
-  "lsr", "lxor", "match", "mod", "module", "mutable", "new", "object", "of",
-  "open", "or", "private", "rec", "sig", "struct", "switch", "then", "to",
-  "true", "try", "type", "val", "virtual", "when", "while", "with",
-]->Set.fromArray
+// Chokidar bindings for file watching
+module Chokidar = {
+  type watcher
 
-// Extract class names from CSS/SCSS content using regex
-let extractClassNames = cssContent => {
-  let classNames = Set.make()
-  let regex = %re("/\.([a-zA-Z_][a-zA-Z0-9_-]*)/g")
+  @module("chokidar")
+  external watch: (array<string>, {"ignored": string => bool, "persistent": bool}) => watcher =
+    "watch"
 
-  let rec findMatches = () => {
-    switch regex->RegExp.exec(cssContent) {
-    | Some(result) =>
-      // matches returns array where index 0 is first capture group (not full match)
-      switch result->RegExp.Result.matches->Array.get(0) {
-      | Some(Some(className)) =>
-        classNames->Set.add(className)->ignore
-      | _ => ()
-      }
-      findMatches()
-    | None => ()
-    }
-  }
-
-  findMatches()
-  classNames->Set.values->Iterator.toArray->Array.toSorted(String.compare)
+  @send external on: (watcher, string, string => unit) => watcher = "on"
+  @send external onReady: (watcher, @as("ready") _, unit => unit) => watcher = "on"
+  @send external close: watcher => promise<unit> = "close"
 }
 
-// Convert kebab-case to camelCase
-@send external replaceWithFn: (string, RegExp.t, @uncurry (string, string) => string) => string = "replace"
+module PostCss = {
+  type plugin
+  type syntax
+  type t
+  type processOptions = {from: string, syntax?: syntax}
 
-let toCamelCase = str => {
-  // Replace -x with X (capitalize letter after hyphen)
-  str->replaceWithFn(%re("/-([a-z])/g"), (_, char) => char->String.toUpperCase)
+  @module("postcss")
+  external make: array<plugin> => t = "default"
+
+  @send external process: (t, string, processOptions) => promise<t> = "process"
 }
 
-// Generate a valid ReScript identifier from a CSS class name
-let toReScriptIdentifier = className => {
-  let identifier = className->toCamelCase
-
-  // Handle names starting with numbers
-  let identifier = if %re("/^[0-9]/")->RegExp.test(identifier) {
-    "_" ++ identifier
-  } else {
-    identifier
-  }
-
-  // Escape ReScript keywords
-  if rescriptKeywords->Set.has(identifier) {
-    identifier ++ "_"
-  } else {
-    identifier
-  }
+module PostCssScss = {
+  @module("postcss-scss")
+  external syntax: PostCss.syntax = "default"
 }
 
-// Generate ReScript bindings for CSS module
-let generateReScriptBindings = (cssFilePath, classNames) => {
-  let fileName = cssFilePath->Node.Path.basename
+module PostCssImport = {
+  @module("postcss-import")
+  external make: unit => PostCss.plugin = "default"
+}
 
-  let bindings = classNames->Array.map(className => {
-    let identifier = className->toReScriptIdentifier
-    `  @module("./${fileName}") @val external ${identifier}: string = "${className}"`
-  })
+module PostCssModules = {
+  type pluginOptions = {getJSON: (string, Dict.t<string>) => unit, exportGlobals?: bool}
 
-  `// Generated from ${fileName}
+  @module("postcss-modules")
+  external make: pluginOptions => PostCss.plugin = "default"
+}
+
+// Extract class names from CSS/SCSS content
+// Uses postcss-import to resolve @imported files
+// ~from is required for the source map generation
+let extractClassNames = async (cssContent, ~from) =>
+  (
+    await Promise.make((resolve, _) => {
+      let classNames = ref([])
+      PostCss.make([
+        PostCssImport.make(),
+        PostCssModules.make({
+          getJSON: (_, json) => {classNames := json->Dict.keysToArray},
+          exportGlobals: true,
+        }),
+      ])
+      ->PostCss.process(cssContent, {from, syntax: PostCssScss.syntax})
+      ->Promise.thenResolve(_ => classNames.contents->resolve)
+      ->ignore
+    })
+  )->Array.toSorted(String.compare)
+
+type importType = Module | Global
+
+// Generate ReScript binding's for CSS module
+let generateReScriptBindings = (baseName, importType, classNames) => {
+  let recordFields = classNames->Array.map(className => `  "${className}": string`)
+  let prelude = `// Generated from ${baseName}
 // Do not edit manually
 
-${bindings->Array.join("\n")}
+type t = {
+${recordFields->Array.join(",\n")}
+}
 `
+  switch importType {
+  | Module =>
+    // CSS Module import will get access to the object mapping returned
+    // by the import. Hashing will happen automatically.
+    prelude +
+    `@module("./${baseName}") external css: t = "default"
+
+// Access class names from the fields of the css object.
+// For scoped classses, the hashed class name is returned.
+// For :global() classes, the class name is returned as-is: no scoping.
+// Classes from @import are also available.
+
+@module("./${baseName}") external _imported: t = "default"
+@new external proxy: ('a, 'b) => 'c = "Proxy"
+%%private(
+  external toDict: t => dict<string> = "%identity"
+  let withProxy = (obj: t): t =>
+    proxy(
+      obj,
+      {
+        // "get": (_b, _c): string => %raw("_b[_c] || _c"),
+        "get": (base, className) =>
+          switch base->toDict->Dict.get(className) {
+          | Some(className) => className
+          | None => className
+          },
+      },
+    )
+)
+let css = withProxy(css)
+
+
+`
+  | Global =>
+    // Global css will return the css class name as-is: no scoping.
+    // Import is not done.
+    prelude + `
+// Access class names from the fields of the css object.
+// Import is not done, the css has to be manually imported
+// from the top of the component hierarchy.
+// For all classes, the class name is returned as-is: no scoping.
+// Classes from @import are also available.
+
+@new external proxy: ('a, 'b) => 'c = "Proxy"
+type empty = {}
+%%private(
+  let withProxy = (obj: empty): t =>
+    proxy(
+      obj,
+      {
+        "get": (_: empty, className: string): string => className,
+      },
+    )
+)
+let css = withProxy({})
+`
+  }
 }
 
-// Generate output filename from CSS module path
-// Card.module.scss -> Card_module.res
-let getOutputFileName = cssFilePath => {
-  let baseName = cssFilePath->Node.Path.basename
-  baseName
-  ->String.replaceRegExp(%re("/\./g"), "_")
-  ->String.replaceRegExp(%re("/_css$|_scss$/"), "")
-  ++ ".res"
+// Determines the base name and import type of a CSS file
+// Card.module.scss -> ("Card", Module)
+// Card.global.scss -> ("Card", Global)
+let getBaseNameAndImportType = cssFilePath => {
+  let baseName = cssFilePath->NodeJs.Path.basename
+  (
+    baseName,
+    if /\.module\.(css|scss)$/->RegExp.test(baseName) {
+      Module
+    } else {
+      Global
+    },
+  )
+}
+
+// Generate output filename from CSS module/global path
+// ("Card", Module) -> "Card_CssModule.res"
+// ("Card", Global) -> "Card_CssGlobal.res"
+let getOutputFileName = (baseName, importType) => {
+  switch importType {
+  | Module => baseName->String.replaceRegExp(/\.module\.(css|scss)$/, "_CssModule") ++ ".res"
+  | Global => baseName->String.replaceRegExp(/\.global\.(css|scss)$/, "_CssGlobal") ++ ".res"
+  }
 }
 
 // Process a single CSS module file
-let processFile = (cssFilePath, outputDir) => {
-  let content = Node.Fs.readFileSync(cssFilePath, "utf-8")
-  let classNames = content->extractClassNames
+let processFile = async (cssFilePath, outputDir) => {
+  let content = NodeJs.Fs.readFileSync(cssFilePath)->NodeJs.Buffer.toString
+  Console.log(`Processing file: ${cssFilePath}`)
+  let classNames = await extractClassNames(content, ~from=cssFilePath)
 
   if classNames->Array.length == 0 {
     Console.log(`⚠️  No classes found in ${cssFilePath}`)
     None
   } else {
-    let bindings = generateReScriptBindings(cssFilePath, classNames)
-    let outputFileName = cssFilePath->getOutputFileName
-    let outputPath = Node.Path.join(
-      outputDir->Option.getOr(cssFilePath->Node.Path.dirname),
+    let (baseName, importType) = cssFilePath->getBaseNameAndImportType
+    let outputFileName = getOutputFileName(baseName, importType)
+    let bindings = generateReScriptBindings(baseName, importType, classNames)
+    let outputPath = NodeJs.Path.join2(
+      outputDir->Option.getOr(cssFilePath->NodeJs.Path.dirname),
       outputFileName,
     )
 
-    Node.Fs.writeFileSync(outputPath, bindings)
+    NodeJs.Fs.writeFileSync(outputPath, NodeJs.Buffer.fromString(bindings))
     Console.log(`✅ Generated ${outputPath} (${classNames->Array.length->Int.toString} classes)`)
 
     (outputPath, classNames)->Some
   }
 }
 
-// Find all CSS module files recursively
-let rec findModules = dir => {
-  let entries = Node.Fs.readdirSync(dir, {"withFileTypes": true})
+// Find all CSS module and global files recursively
+let rec findCssFiles = dir => {
+  let entries = NodeJs.Fs.readdirSync(dir)
 
   entries->Array.flatMap(entry => {
-    let fullPath = Node.Path.join(dir, entry["name"])
-    if entry["isDirectory"]() {
-      findModules(fullPath)
-    } else if %re("/\.module\.(css|scss)$/")->RegExp.test(entry["name"]) {
+    let fullPath = NodeJs.Path.join2(dir, entry)
+    let stat = NodeJs.Fs.lstatSync(#String(fullPath))
+    if stat->NodeJs.Fs.Stats.isDirectory {
+      findCssFiles(fullPath)
+    } else if /\.(module|global)\.(css|scss)$/->RegExp.test(entry) {
       [fullPath]
     } else {
       []
@@ -146,50 +230,152 @@ let rec findModules = dir => {
   })
 }
 
-// Print usage
-let printUsage = () => {
-  Console.log(`
-CSS Modules to ReScript Converter
+// Watch directories for CSS module and global file changes
+let watchDirectories = async (dirs, outputDir, ~skipInitial) => {
+  Console.log(
+    `👀 Watching ${dirs
+      ->Array.length
+      ->Int.toString} directories for CSS module/global changes...`,
+  )
+  dirs->Array.forEach(dir => Console.log(`   ${dir}`))
+  if skipInitial {
+    Console.log(`Skipping initial compilation.`)
+  }
+  Console.log(`Press Ctrl+C to stop.\n`)
 
-Usage:
-  node CssToRescript.res.mjs <file.module.css|scss> [--output-dir <dir>]
-  node CssToRescript.res.mjs <directory> [--output-dir <dir>]
+  // Set up chokidar watcher for CSS module and global files
+  let isIgnored = path => {
+    // Ignore dotfiles and non-CSS module/global files
+    let isDotfile = /(^|[\/\\])\./->RegExp.test(path)
+    let isCssFile = /\.(module|global)\.(css|scss)$/->RegExp.test(path)
+    let isDir =
+      NodeJs.Fs.existsSync(path) && NodeJs.Fs.lstatSync(#String(path))->NodeJs.Fs.Stats.isDirectory
+    isDotfile || (!isCssFile && !isDir)
+  }
 
-Examples:
-  node CssToRescript.res.mjs src/Card.module.scss
-  node CssToRescript.res.mjs src/components --output-dir src/bindings
-`)
+  let ready = ref(false)
+
+  Chokidar.watch(dirs, {"ignored": isIgnored, "persistent": true})
+  ->Chokidar.onReady(() => {
+    ready := true
+    Console.log(`Ready for changes.`)
+  })
+  ->Chokidar.on("change", path => {
+    Console.log(`\nChanged: ${path}`)
+    processFile(path, outputDir)->ignore
+  })
+  ->Chokidar.on("add", path => {
+    // Skip initial files if skipInitial is set
+    if skipInitial && !ready.contents {
+      ()
+    } else {
+      Console.log(`\nAdded: ${path}`)
+      processFile(path, outputDir)->ignore
+    }
+  })
+  ->Chokidar.on("unlink", path => {
+    Console.log(`\n🗑️  Deleted: ${path}`)
+  })
+  ->ignore
 }
 
-// CLI entry point
-let main = () => {
-  let args = Node.Process.argv->Array.sliceToEnd(~start=2)
+let helpText = `
+  Usage
+    $ css-to-rescript <file.module.css|scss|global.css|scss...>
+    $ css-to-rescript <directory...>
 
-  if args->Array.length == 0 {
-    printUsage()
-    Node.Process.exit(1)
+  Generates ReScript bindings from CSS module and global files:
+    *.module.css|scss -> *_CssModule.res
+    *.global.css|scss -> *_CssGlobal.res
+
+  Options
+    --watch, -w         Watch for changes and regenerate bindings (directories only)
+    --skip-initial, -s  Skip initial compilation in watch mode
+    --output-dir, -o    Directory to write generated .res files
+                        (multiple files or single directory only)
+
+  Examples
+    $ css-to-rescript src/Card.module.scss
+    $ css-to-rescript src/Theme.global.css
+    $ css-to-rescript src/Button.module.css src/Card.module.scss -o src/bindings
+    $ css-to-rescript src/components
+    $ css-to-rescript src/components src/pages --watch
+`
+
+let main = async () => {
+  let cli = Meow.make(
+    helpText,
+    {
+      importMeta: Meow.importMeta,
+      flags: {
+        "watch": {Meow.type_: "boolean", shortFlag: "w", default: false},
+        "outputDir": {Meow.type_: "string", shortFlag: "o"},
+        "skipInitial": {Meow.type_: "boolean", shortFlag: "s", default: false},
+      },
+      allowUnknownFlags: false,
+    },
+  )
+
+  let inputPaths = cli.input
+
+  if inputPaths->Array.length == 0 {
+    cli.showHelp()
+    NodeJs.Process.process->NodeJs.Process.exitWithCode(1)
   }
 
-  let inputPath = args->Array.getUnsafe(0)
-  let outputDirIndex = args->Array.findIndex(arg => arg == "--output-dir")
-  let outputDir = if outputDirIndex != -1 {
-    args->Array.get(outputDirIndex + 1)
-  } else {
-    None
+  let outputDir = cli.flags["outputDir"]
+  let watchMode = cli.flags["watch"]
+  let skipInitial = cli.flags["skipInitial"]
+
+  // Classify inputs as files or directories
+  let (files, dirs) = inputPaths->Array.reduce(([], []), ((files, dirs), path) => {
+    let stat = NodeJs.Fs.lstatSync(#String(path))
+    if stat->NodeJs.Fs.Stats.isFile {
+      (files->Array.concat([path]), dirs)
+    } else if stat->NodeJs.Fs.Stats.isDirectory {
+      (files, dirs->Array.concat([path]))
+    } else {
+      (files, dirs)
+    }
+  })
+
+  // Validation: watch mode only supports directories
+  if watchMode && files->Array.length > 0 {
+    Console.error(`Error: Watch mode only supports directories, not files.`)
+    NodeJs.Process.process->NodeJs.Process.exitWithCode(1)
   }
 
-  let stat = Node.Fs.statSync(inputPath)
+  // Validation: output-dir only supports multiple files OR single directory
+  if (
+    outputDir->Option.isSome &&
+      (dirs->Array.length > 1 || (files->Array.length > 0 && dirs->Array.length > 0))
+  ) {
+    Console.error(`Error: --output-dir only supports multiple files or a single directory, not mixed inputs or multiple directories.`)
+    NodeJs.Process.process->NodeJs.Process.exitWithCode(1)
+  }
 
-  if stat["isFile"]() {
-    processFile(inputPath, outputDir)->ignore
-  } else if stat["isDirectory"]() {
-    let moduleFiles = findModules(inputPath)
-    Console.log(`Found ${moduleFiles->Array.length->Int.toString} CSS module files\n`)
-
-    moduleFiles->Array.forEach(file => {
-      processFile(file, outputDir)->ignore
+  // Process files
+  if files->Array.length > 0 {
+    await files->Array.reduce(Promise.resolve(), async (acc, file) => {
+      await acc
+      (await processFile(file, outputDir))->ignore
     })
   }
+
+  // Process directories
+  if dirs->Array.length > 0 {
+    if watchMode {
+      await watchDirectories(dirs, outputDir, ~skipInitial)
+    } else {
+      let moduleFiles = dirs->Array.flatMap(findCssFiles)
+      Console.log(`Found ${moduleFiles->Array.length->Int.toString} CSS module files\n`)
+
+      await moduleFiles->Array.reduce(Promise.resolve(), async (acc, file) => {
+        await acc
+        (await processFile(file, outputDir))->ignore
+      })
+    }
+  }
 }
 
-main()
+main()->ignore
