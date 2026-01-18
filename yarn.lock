@@ -192,7 +192,7 @@ __metadata:
   resolution: "@greenfinity/rescript-typed-css-modules@workspace:."
   dependencies:
     "@rescript/core": "npm:^1.6.1"
-    auto-changelog: "npm:^2.4.0"
+    auto-changelog: "npm:^2.5.0"
     chokidar: "npm:^5.0.0"
     esbuild: "npm:^0.27.2"
     meow: "npm:^14.0.0"
@@ -332,7 +332,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"auto-changelog@npm:^2.4.0":
+"auto-changelog@npm:^2.5.0":
   version: 2.5.0
   resolution: "auto-changelog@npm:2.5.0"
   dependencies:

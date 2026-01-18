@@ -18,6 +18,7 @@
     "rescript.json"
   ],
   "scripts": {
+    "changelog": "yarn auto-changelog -p && git add HISTORY.md",
     "rescript:clean": "yarn rescript clean",
     "rescript:build": "yarn rescript build",
     "rescript:dev": "RES_LOGGER=ReScriptLogger.Universal RES_LOG=info yarn rescript watch",
@@ -35,7 +36,7 @@
     "yalc:push": "yarn nodemon -e res -x \"yalc push\""
   },
   "devDependencies": {
-    "auto-changelog": "^2.4.0",
+    "auto-changelog": "^2.5.0",
     "esbuild": "^0.27.2",
     "nodemon": "^3.0.1",
     "rescript": "^12.1.0"
