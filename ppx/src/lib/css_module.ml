@@ -20,8 +20,11 @@ let expander ~ctxt var_name css_path =
     let loc = loc
   end in
   let module Builder = Ast_builder.Make (Loc) in
+  (* Use loc.loc_start.pos_fname for the original source path *)
+  (* This works correctly during incremental builds where input_name *)
+  (* points to a temporary copy in lib/bs/___incremental/ *)
   let source_file_dir =
-    ctxt |> Expansion_context.Extension.input_name |> Filename.dirname
+    loc.loc_start.pos_fname |> Filename.dirname
   in
   let css_filepath = Filename.concat source_file_dir css_path in
 
