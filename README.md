@@ -50,8 +50,14 @@ Usage
 Options
   --watch, -w         Watch for changes and regenerate bindings (directories only)
   --skip-initial, -s  Skip initial compilation in watch mode
+  --force, -f         Force compilation even if files are unchanged
+  --silent            Only show "Generated" messages, suppress other output
+  --quiet, -q         Suppress all output
   --output-dir, -o    Directory to write generated .res files
                       (multiple files or single directory only)
+
+By default, files are skipped if the source CSS file has not been modified
+since the last compilation. Use --force to always recompile.
 
 Examples
   $ css-to-rescript src/Card.module.scss
@@ -60,6 +66,7 @@ Examples
   $ css-to-rescript src/components
   $ css-to-rescript src/components src/pages --watch
   $ css-to-rescript src/components --watch --skip-initial
+  $ css-to-rescript src/components --force
 ```
 
 ## Example

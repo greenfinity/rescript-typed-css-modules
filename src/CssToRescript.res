@@ -9,7 +9,7 @@ module Meow = {
     default?: bool,
   }
 
-  type flags = {"watch": flag, "outputDir": flag, "skipInitial": flag}
+  type flags = {"watch": flag, "outputDir": flag, "skipInitial": flag, "force": flag, "silent": flag, "quiet": flag}
 
   type importMeta
 
@@ -21,7 +21,7 @@ module Meow = {
 
   type result = {
     input: array<string>,
-    flags: {"watch": bool, "outputDir": option<string>, "skipInitial": bool},
+    flags: {"watch": bool, "outputDir": option<string>, "skipInitial": bool, "force": bool, "silent": bool, "quiet": bool},
     showHelp: unit => unit,
   }
 
@@ -188,28 +188,61 @@ let getOutputFileName = (baseName, importType) => {
   }
 }
 
-// Process a single CSS module file
-let processFile = async (cssFilePath, outputDir) => {
-  let content = NodeJs.Fs.readFileSync(cssFilePath)->NodeJs.Buffer.toString
-  Console.log(`Processing file: ${cssFilePath}`)
-  let classNames = await extractClassNames(content, ~from=cssFilePath)
+// Check if source file is newer than output file
+// Returns true if compilation should proceed (source is newer or output doesn't exist)
+let shouldCompile = (cssFilePath, outputDir) => {
+  let (baseName, importType) = cssFilePath->getBaseNameAndImportType
+  let outputFileName = getOutputFileName(baseName, importType)
+  let outputPath = NodeJs.Path.join2(
+    outputDir->Option.getOr(cssFilePath->NodeJs.Path.dirname),
+    outputFileName,
+  )
 
-  if classNames->Array.length == 0 {
-    Console.log(`⚠️  No classes found in ${cssFilePath}`)
+  if !NodeJs.Fs.existsSync(outputPath) {
+    true
+  } else {
+    let sourceStat = NodeJs.Fs.lstatSync(#String(cssFilePath))
+    let outputStat = NodeJs.Fs.lstatSync(#String(outputPath))
+    sourceStat.mtimeMs > outputStat.mtimeMs
+  }
+}
+
+// Process a single CSS module file
+let processFile = async (cssFilePath, outputDir, ~force=false, ~silent=false, ~quiet=false) => {
+  // Skip if source file is not newer than output (unless force is set)
+  if !force && !shouldCompile(cssFilePath, outputDir) {
+    if !silent && !quiet {
+      Console.log(`⏭️  Skipped: ${cssFilePath} (unchanged)`)
+    }
     None
   } else {
-    let (baseName, importType) = cssFilePath->getBaseNameAndImportType
-    let outputFileName = getOutputFileName(baseName, importType)
-    let bindings = generateReScriptBindings(baseName, importType, classNames)
-    let outputPath = NodeJs.Path.join2(
-      outputDir->Option.getOr(cssFilePath->NodeJs.Path.dirname),
-      outputFileName,
-    )
+    let content = NodeJs.Fs.readFileSync(cssFilePath)->NodeJs.Buffer.toString
+    if !silent && !quiet {
+      Console.log(`Processing file: ${cssFilePath}`)
+    }
+    let classNames = await extractClassNames(content, ~from=cssFilePath)
 
-    NodeJs.Fs.writeFileSync(outputPath, NodeJs.Buffer.fromString(bindings))
-    Console.log(`✅ Generated ${outputPath} (${classNames->Array.length->Int.toString} classes)`)
+    if classNames->Array.length == 0 {
+      if !silent && !quiet {
+        Console.log(`⚠️  No classes found in ${cssFilePath}`)
+      }
+      None
+    } else {
+      let (baseName, importType) = cssFilePath->getBaseNameAndImportType
+      let outputFileName = getOutputFileName(baseName, importType)
+      let bindings = generateReScriptBindings(baseName, importType, classNames)
+      let outputPath = NodeJs.Path.join2(
+        outputDir->Option.getOr(cssFilePath->NodeJs.Path.dirname),
+        outputFileName,
+      )
 
-    (outputPath, classNames)->Some
+      NodeJs.Fs.writeFileSync(outputPath, NodeJs.Buffer.fromString(bindings))
+      if !quiet {
+        Console.log(`✅ Generated ${outputPath} (${classNames->Array.length->Int.toString} classes)`)
+      }
+
+      (outputPath, classNames)->Some
+    }
   }
 }
 
@@ -231,17 +264,19 @@ let rec findCssFiles = dir => {
 }
 
 // Watch directories for CSS module and global file changes
-let watchDirectories = async (dirs, outputDir, ~skipInitial) => {
-  Console.log(
-    `👀 Watching ${dirs
-      ->Array.length
-      ->Int.toString} directories for CSS module/global changes...`,
-  )
-  dirs->Array.forEach(dir => Console.log(`   ${dir}`))
-  if skipInitial {
-    Console.log(`Skipping initial compilation.`)
+let watchDirectories = async (dirs, outputDir, ~skipInitial, ~force, ~silent, ~quiet) => {
+  if !silent && !quiet {
+    Console.log(
+      `👀 Watching ${dirs
+        ->Array.length
+        ->Int.toString} directories for CSS module/global changes...`,
+    )
+    dirs->Array.forEach(dir => Console.log(`   ${dir}`))
+    if skipInitial {
+      Console.log(`Skipping initial compilation.`)
+    }
+    Console.log(`Press Ctrl+C to stop.\n`)
   }
-  Console.log(`Press Ctrl+C to stop.\n`)
 
   // Set up chokidar watcher for CSS module and global files
   let isIgnored = path => {
@@ -258,23 +293,49 @@ let watchDirectories = async (dirs, outputDir, ~skipInitial) => {
   Chokidar.watch(dirs, {"ignored": isIgnored, "persistent": true})
   ->Chokidar.onReady(() => {
     ready := true
-    Console.log(`Ready for changes.`)
+    if !silent && !quiet {
+      Console.log(`Ready for changes.`)
+    }
   })
   ->Chokidar.on("change", path => {
-    Console.log(`\nChanged: ${path}`)
-    processFile(path, outputDir)->ignore
+    // File was explicitly changed, always compile
+    if !silent && !quiet {
+      Console.log(`Changed: ${path}`)
+    }
+    processFile(path, outputDir, ~force=true, ~silent, ~quiet)->ignore
   })
   ->Chokidar.on("add", path => {
     // Skip initial files if skipInitial is set
     if skipInitial && !ready.contents {
       ()
+    } else if ready.contents {
+      // After ready, new files should always be compiled
+      if !silent && !quiet {
+        Console.log(`Added: ${path}`)
+      }
+      processFile(path, outputDir, ~force=true, ~silent, ~quiet)->ignore
     } else {
-      Console.log(`\nAdded: ${path}`)
-      processFile(path, outputDir)->ignore
+      // Initial compilation: use skip-unchanged logic (unless force is set)
+      processFile(path, outputDir, ~force, ~silent, ~quiet)->ignore
     }
   })
   ->Chokidar.on("unlink", path => {
-    Console.log(`\n🗑️  Deleted: ${path}`)
+    if !silent && !quiet {
+      Console.log(`🗑️  Deleted: ${path}`)
+    }
+    // Delete the corresponding compiled .res file if it exists
+    let (baseName, importType) = path->getBaseNameAndImportType
+    let outputFileName = getOutputFileName(baseName, importType)
+    let outputPath = NodeJs.Path.join2(
+      outputDir->Option.getOr(path->NodeJs.Path.dirname),
+      outputFileName,
+    )
+    if NodeJs.Fs.existsSync(outputPath) {
+      NodeJs.Fs.unlinkSync(outputPath)
+      if !silent && !quiet {
+        Console.log(`🗑️  Deleted compiled: ${outputPath}`)
+      }
+    }
   })
   ->ignore
 }
@@ -291,8 +352,14 @@ let helpText = `
   Options
     --watch, -w         Watch for changes and regenerate bindings (directories only)
     --skip-initial, -s  Skip initial compilation in watch mode
+    --force, -f         Force compilation even if files are unchanged
+    --silent            Only show "Generated" messages, suppress other output
+    --quiet, -q         Suppress all output
     --output-dir, -o    Directory to write generated .res files
                         (multiple files or single directory only)
+
+  By default, files are skipped if the source CSS file has not been modified
+  since the last compilation. Use --force to always recompile.
 
   Examples
     $ css-to-rescript src/Card.module.scss
@@ -300,6 +367,7 @@ let helpText = `
     $ css-to-rescript src/Button.module.css src/Card.module.scss -o src/bindings
     $ css-to-rescript src/components
     $ css-to-rescript src/components src/pages --watch
+    $ css-to-rescript src/components --force
 `
 
 let main = async () => {
@@ -311,6 +379,9 @@ let main = async () => {
         "watch": {Meow.type_: "boolean", shortFlag: "w", default: false},
         "outputDir": {Meow.type_: "string", shortFlag: "o"},
         "skipInitial": {Meow.type_: "boolean", shortFlag: "s", default: false},
+        "force": {Meow.type_: "boolean", shortFlag: "f", default: false},
+        "silent": {Meow.type_: "boolean", default: false},
+        "quiet": {Meow.type_: "boolean", shortFlag: "q", default: false},
       },
       allowUnknownFlags: false,
     },
@@ -326,6 +397,9 @@ let main = async () => {
   let outputDir = cli.flags["outputDir"]
   let watchMode = cli.flags["watch"]
   let skipInitial = cli.flags["skipInitial"]
+  let force = cli.flags["force"]
+  let silent = cli.flags["silent"]
+  let quiet = cli.flags["quiet"]
 
   // Classify inputs as files or directories
   let (files, dirs) = inputPaths->Array.reduce(([], []), ((files, dirs), path) => {
@@ -358,21 +432,23 @@ let main = async () => {
   if files->Array.length > 0 {
     await files->Array.reduce(Promise.resolve(), async (acc, file) => {
       await acc
-      (await processFile(file, outputDir))->ignore
+      (await processFile(file, outputDir, ~force, ~silent, ~quiet))->ignore
     })
   }
 
   // Process directories
   if dirs->Array.length > 0 {
     if watchMode {
-      await watchDirectories(dirs, outputDir, ~skipInitial)
+      await watchDirectories(dirs, outputDir, ~skipInitial, ~force, ~silent, ~quiet)
     } else {
       let moduleFiles = dirs->Array.flatMap(findCssFiles)
-      Console.log(`Found ${moduleFiles->Array.length->Int.toString} CSS module files\n`)
+      if !silent && !quiet {
+        Console.log(`Found ${moduleFiles->Array.length->Int.toString} CSS module files\n`)
+      }
 
       await moduleFiles->Array.reduce(Promise.resolve(), async (acc, file) => {
         await acc
-        (await processFile(file, outputDir))->ignore
+        (await processFile(file, outputDir, ~force, ~silent, ~quiet))->ignore
       })
     }
   }
