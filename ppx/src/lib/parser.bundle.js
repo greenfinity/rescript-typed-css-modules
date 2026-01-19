@@ -14818,11 +14818,579 @@ var require_build = __commonJS({
   }
 });
 
+// node_modules/postcss-scss/lib/scss-stringifier.js
+var require_scss_stringifier = __commonJS({
+  "node_modules/postcss-scss/lib/scss-stringifier.js"(exports, module2) {
+    var Stringifier = require_stringifier();
+    var ScssStringifier = class extends Stringifier {
+      comment(node) {
+        let left = this.raw(node, "left", "commentLeft");
+        let right = this.raw(node, "right", "commentRight");
+        if (node.raws.inline) {
+          let text = node.raws.text || node.text;
+          this.builder("//" + left + text + right, node);
+        } else {
+          this.builder("/*" + left + node.text + right + "*/", node);
+        }
+      }
+      decl(node, semicolon) {
+        if (!node.isNested) {
+          super.decl(node, semicolon);
+        } else {
+          let between = this.raw(node, "between", "colon");
+          let string = node.prop + between + this.rawValue(node, "value");
+          if (node.important) {
+            string += node.raws.important || " !important";
+          }
+          this.builder(string + "{", node, "start");
+          let after;
+          if (node.nodes && node.nodes.length) {
+            this.body(node);
+            after = this.raw(node, "after");
+          } else {
+            after = this.raw(node, "after", "emptyBody");
+          }
+          if (after)
+            this.builder(after);
+          this.builder("}", node, "end");
+        }
+      }
+      rawValue(node, prop) {
+        let value = node[prop];
+        let raw = node.raws[prop];
+        if (raw && raw.value === value) {
+          return raw.scss ? raw.scss : raw.raw;
+        } else {
+          return value;
+        }
+      }
+    };
+    module2.exports = ScssStringifier;
+  }
+});
+
+// node_modules/postcss-scss/lib/scss-stringify.js
+var require_scss_stringify = __commonJS({
+  "node_modules/postcss-scss/lib/scss-stringify.js"(exports, module2) {
+    var ScssStringifier = require_scss_stringifier();
+    module2.exports = function scssStringify(node, builder) {
+      let str = new ScssStringifier(builder);
+      str.stringify(node);
+    };
+  }
+});
+
+// node_modules/postcss-scss/lib/nested-declaration.js
+var require_nested_declaration = __commonJS({
+  "node_modules/postcss-scss/lib/nested-declaration.js"(exports, module2) {
+    var { Container } = require_postcss();
+    var NestedDeclaration = class extends Container {
+      constructor(defaults) {
+        super(defaults);
+        this.type = "decl";
+        this.isNested = true;
+        if (!this.nodes)
+          this.nodes = [];
+      }
+    };
+    module2.exports = NestedDeclaration;
+  }
+});
+
+// node_modules/postcss-scss/lib/scss-tokenize.js
+var require_scss_tokenize = __commonJS({
+  "node_modules/postcss-scss/lib/scss-tokenize.js"(exports, module2) {
+    "use strict";
+    var SINGLE_QUOTE = "'".charCodeAt(0);
+    var DOUBLE_QUOTE = '"'.charCodeAt(0);
+    var BACKSLASH = "\\".charCodeAt(0);
+    var SLASH = "/".charCodeAt(0);
+    var NEWLINE = "\n".charCodeAt(0);
+    var SPACE = " ".charCodeAt(0);
+    var FEED = "\f".charCodeAt(0);
+    var TAB = "	".charCodeAt(0);
+    var CR = "\r".charCodeAt(0);
+    var OPEN_SQUARE = "[".charCodeAt(0);
+    var CLOSE_SQUARE = "]".charCodeAt(0);
+    var OPEN_PARENTHESES = "(".charCodeAt(0);
+    var CLOSE_PARENTHESES = ")".charCodeAt(0);
+    var OPEN_CURLY = "{".charCodeAt(0);
+    var CLOSE_CURLY = "}".charCodeAt(0);
+    var SEMICOLON = ";".charCodeAt(0);
+    var ASTERISK = "*".charCodeAt(0);
+    var COLON = ":".charCodeAt(0);
+    var AT = "@".charCodeAt(0);
+    var COMMA = ",".charCodeAt(0);
+    var HASH = "#".charCodeAt(0);
+    var RE_AT_END = /[\t\n\f\r "#'()/;[\\\]{}]/g;
+    var RE_WORD_END = /[,\t\n\f\r !"#'():;@[\\\]{}]|\/(?=\*)/g;
+    var RE_BAD_BRACKET = /.[\r\n"'(/\\]/;
+    var RE_HEX_ESCAPE = /[\da-f]/i;
+    var RE_NEW_LINE = /[\n\f\r]/g;
+    module2.exports = function scssTokenize(input, options = {}) {
+      let css2 = input.css.valueOf();
+      let ignore = options.ignoreErrors;
+      let code, next, quote, content, escape;
+      let escaped, prev, n, currentToken;
+      let length = css2.length;
+      let pos = 0;
+      let buffer = [];
+      let returned = [];
+      let brackets;
+      function position() {
+        return pos;
+      }
+      function unclosed(what) {
+        throw input.error("Unclosed " + what, pos);
+      }
+      function endOfFile() {
+        return returned.length === 0 && pos >= length;
+      }
+      function interpolation() {
+        let deep = 1;
+        let stringQuote = false;
+        let stringEscaped = false;
+        while (deep > 0) {
+          next += 1;
+          if (css2.length <= next)
+            unclosed("interpolation");
+          code = css2.charCodeAt(next);
+          n = css2.charCodeAt(next + 1);
+          if (stringQuote) {
+            if (!stringEscaped && code === stringQuote) {
+              stringQuote = false;
+              stringEscaped = false;
+            } else if (code === BACKSLASH) {
+              stringEscaped = !stringEscaped;
+            } else if (stringEscaped) {
+              stringEscaped = false;
+            }
+          } else if (code === SINGLE_QUOTE || code === DOUBLE_QUOTE) {
+            stringQuote = code;
+          } else if (code === CLOSE_CURLY) {
+            deep -= 1;
+          } else if (code === HASH && n === OPEN_CURLY) {
+            deep += 1;
+          }
+        }
+      }
+      function nextToken(opts) {
+        if (returned.length)
+          return returned.pop();
+        if (pos >= length)
+          return void 0;
+        let ignoreUnclosed = opts ? opts.ignoreUnclosed : false;
+        code = css2.charCodeAt(pos);
+        switch (code) {
+          case NEWLINE:
+          case SPACE:
+          case TAB:
+          case CR:
+          case FEED: {
+            next = pos;
+            do {
+              next += 1;
+              code = css2.charCodeAt(next);
+            } while (code === SPACE || code === NEWLINE || code === TAB || code === CR || code === FEED);
+            currentToken = ["space", css2.slice(pos, next)];
+            pos = next - 1;
+            break;
+          }
+          case OPEN_SQUARE:
+          case CLOSE_SQUARE:
+          case OPEN_CURLY:
+          case CLOSE_CURLY:
+          case COLON:
+          case SEMICOLON:
+          case CLOSE_PARENTHESES: {
+            let controlChar = String.fromCharCode(code);
+            currentToken = [controlChar, controlChar, pos];
+            break;
+          }
+          case COMMA: {
+            currentToken = ["word", ",", pos, pos + 1];
+            break;
+          }
+          case OPEN_PARENTHESES: {
+            prev = buffer.length ? buffer.pop()[1] : "";
+            n = css2.charCodeAt(pos + 1);
+            if (prev === "url" && n !== SINGLE_QUOTE && n !== DOUBLE_QUOTE) {
+              brackets = 1;
+              escaped = false;
+              next = pos + 1;
+              while (next <= css2.length - 1) {
+                n = css2.charCodeAt(next);
+                if (n === BACKSLASH) {
+                  escaped = !escaped;
+                } else if (n === OPEN_PARENTHESES) {
+                  brackets += 1;
+                } else if (n === CLOSE_PARENTHESES) {
+                  brackets -= 1;
+                  if (brackets === 0)
+                    break;
+                }
+                next += 1;
+              }
+              content = css2.slice(pos, next + 1);
+              currentToken = ["brackets", content, pos, next];
+              pos = next;
+            } else {
+              next = css2.indexOf(")", pos + 1);
+              content = css2.slice(pos, next + 1);
+              if (next === -1 || RE_BAD_BRACKET.test(content)) {
+                currentToken = ["(", "(", pos];
+              } else {
+                currentToken = ["brackets", content, pos, next];
+                pos = next;
+              }
+            }
+            break;
+          }
+          case SINGLE_QUOTE:
+          case DOUBLE_QUOTE: {
+            quote = code;
+            next = pos;
+            escaped = false;
+            while (next < length) {
+              next++;
+              if (next === length)
+                unclosed("string");
+              code = css2.charCodeAt(next);
+              n = css2.charCodeAt(next + 1);
+              if (!escaped && code === quote) {
+                break;
+              } else if (code === BACKSLASH) {
+                escaped = !escaped;
+              } else if (escaped) {
+                escaped = false;
+              } else if (code === HASH && n === OPEN_CURLY) {
+                interpolation();
+              }
+            }
+            currentToken = ["string", css2.slice(pos, next + 1), pos, next];
+            pos = next;
+            break;
+          }
+          case AT: {
+            RE_AT_END.lastIndex = pos + 1;
+            RE_AT_END.test(css2);
+            if (RE_AT_END.lastIndex === 0) {
+              next = css2.length - 1;
+            } else {
+              next = RE_AT_END.lastIndex - 2;
+            }
+            currentToken = ["at-word", css2.slice(pos, next + 1), pos, next];
+            pos = next;
+            break;
+          }
+          case BACKSLASH: {
+            next = pos;
+            escape = true;
+            while (css2.charCodeAt(next + 1) === BACKSLASH) {
+              next += 1;
+              escape = !escape;
+            }
+            code = css2.charCodeAt(next + 1);
+            if (escape && code !== SLASH && code !== SPACE && code !== NEWLINE && code !== TAB && code !== CR && code !== FEED) {
+              next += 1;
+              if (RE_HEX_ESCAPE.test(css2.charAt(next))) {
+                while (RE_HEX_ESCAPE.test(css2.charAt(next + 1))) {
+                  next += 1;
+                }
+                if (css2.charCodeAt(next + 1) === SPACE) {
+                  next += 1;
+                }
+              }
+            }
+            currentToken = ["word", css2.slice(pos, next + 1), pos, next];
+            pos = next;
+            break;
+          }
+          default:
+            n = css2.charCodeAt(pos + 1);
+            if (code === HASH && n === OPEN_CURLY) {
+              next = pos;
+              interpolation();
+              content = css2.slice(pos, next + 1);
+              currentToken = ["word", content, pos, next];
+              pos = next;
+            } else if (code === SLASH && n === ASTERISK) {
+              next = css2.indexOf("*/", pos + 2) + 1;
+              if (next === 0) {
+                if (ignore || ignoreUnclosed) {
+                  next = css2.length;
+                } else {
+                  unclosed("comment");
+                }
+              }
+              currentToken = ["comment", css2.slice(pos, next + 1), pos, next];
+              pos = next;
+            } else if (code === SLASH && n === SLASH) {
+              RE_NEW_LINE.lastIndex = pos + 1;
+              RE_NEW_LINE.test(css2);
+              if (RE_NEW_LINE.lastIndex === 0) {
+                next = css2.length - 1;
+              } else {
+                next = RE_NEW_LINE.lastIndex - 2;
+              }
+              content = css2.slice(pos, next + 1);
+              currentToken = ["comment", content, pos, next, "inline"];
+              pos = next;
+            } else {
+              RE_WORD_END.lastIndex = pos + 1;
+              RE_WORD_END.test(css2);
+              if (RE_WORD_END.lastIndex === 0) {
+                next = css2.length - 1;
+              } else {
+                next = RE_WORD_END.lastIndex - 2;
+              }
+              currentToken = ["word", css2.slice(pos, next + 1), pos, next];
+              buffer.push(currentToken);
+              pos = next;
+            }
+            break;
+        }
+        pos++;
+        return currentToken;
+      }
+      function back(token) {
+        returned.push(token);
+      }
+      return {
+        back,
+        endOfFile,
+        nextToken,
+        position
+      };
+    };
+  }
+});
+
+// node_modules/postcss-scss/lib/scss-parser.js
+var require_scss_parser = __commonJS({
+  "node_modules/postcss-scss/lib/scss-parser.js"(exports, module2) {
+    var { Comment } = require_postcss();
+    var Parser = require_parser();
+    var NestedDeclaration = require_nested_declaration();
+    var scssTokenizer = require_scss_tokenize();
+    var ScssParser = class extends Parser {
+      atrule(token) {
+        let name = token[1];
+        let prev = token;
+        while (!this.tokenizer.endOfFile()) {
+          let next = this.tokenizer.nextToken();
+          if (next[0] === "word" && next[2] === prev[3] + 1) {
+            name += next[1];
+            prev = next;
+          } else {
+            this.tokenizer.back(next);
+            break;
+          }
+        }
+        super.atrule(["at-word", name, token[2], prev[3]]);
+      }
+      comment(token) {
+        if (token[4] === "inline") {
+          let node = new Comment();
+          this.init(node, token[2]);
+          node.raws.inline = true;
+          let pos = this.input.fromOffset(token[3]);
+          node.source.end = {
+            column: pos.col,
+            line: pos.line,
+            offset: token[3] + 1
+          };
+          let text = token[1].slice(2);
+          if (/^\s*$/.test(text)) {
+            node.text = "";
+            node.raws.left = text;
+            node.raws.right = "";
+          } else {
+            let match = text.match(/^(\s*)([^]*\S)(\s*)$/);
+            let fixed = match[2].replace(/(\*\/|\/\*)/g, "*//*");
+            node.text = fixed;
+            node.raws.left = match[1];
+            node.raws.right = match[3];
+            node.raws.text = match[2];
+          }
+        } else {
+          super.comment(token);
+        }
+      }
+      createTokenizer() {
+        this.tokenizer = scssTokenizer(this.input);
+      }
+      raw(node, prop, tokens, customProperty) {
+        super.raw(node, prop, tokens, customProperty);
+        if (node.raws[prop]) {
+          let scss = node.raws[prop].raw;
+          node.raws[prop].raw = tokens.reduce((all, i) => {
+            if (i[0] === "comment" && i[4] === "inline") {
+              let text = i[1].slice(2).replace(/(\*\/|\/\*)/g, "*//*");
+              return all + "/*" + text + "*/";
+            } else {
+              return all + i[1];
+            }
+          }, "");
+          if (scss !== node.raws[prop].raw) {
+            node.raws[prop].scss = scss;
+          }
+        }
+      }
+      rule(tokens) {
+        let withColon = false;
+        let brackets = 0;
+        let value = "";
+        for (let i of tokens) {
+          if (withColon) {
+            if (i[0] !== "comment" && i[0] !== "{") {
+              value += i[1];
+            }
+          } else if (i[0] === "space" && i[1].includes("\n")) {
+            break;
+          } else if (i[0] === "(") {
+            brackets += 1;
+          } else if (i[0] === ")") {
+            brackets -= 1;
+          } else if (brackets === 0 && i[0] === ":") {
+            withColon = true;
+          }
+        }
+        if (!withColon || value.trim() === "" || /^[#:A-Za-z-]/.test(value)) {
+          super.rule(tokens);
+        } else {
+          tokens.pop();
+          let node = new NestedDeclaration();
+          this.init(node, tokens[0][2]);
+          let last;
+          for (let i = tokens.length - 1; i >= 0; i--) {
+            if (tokens[i][0] !== "space") {
+              last = tokens[i];
+              break;
+            }
+          }
+          if (last[3]) {
+            let pos = this.input.fromOffset(last[3]);
+            node.source.end = {
+              column: pos.col,
+              line: pos.line,
+              offset: last[3] + 1
+            };
+          } else {
+            let pos = this.input.fromOffset(last[2]);
+            node.source.end = {
+              column: pos.col,
+              line: pos.line,
+              offset: last[2] + 1
+            };
+          }
+          while (tokens[0][0] !== "word") {
+            node.raws.before += tokens.shift()[1];
+          }
+          if (tokens[0][2]) {
+            let pos = this.input.fromOffset(tokens[0][2]);
+            node.source.start = {
+              column: pos.col,
+              line: pos.line,
+              offset: tokens[0][2]
+            };
+          }
+          node.prop = "";
+          while (tokens.length) {
+            let type = tokens[0][0];
+            if (type === ":" || type === "space" || type === "comment") {
+              break;
+            }
+            node.prop += tokens.shift()[1];
+          }
+          node.raws.between = "";
+          let token;
+          while (tokens.length) {
+            token = tokens.shift();
+            if (token[0] === ":") {
+              node.raws.between += token[1];
+              break;
+            } else {
+              node.raws.between += token[1];
+            }
+          }
+          if (node.prop[0] === "_" || node.prop[0] === "*") {
+            node.raws.before += node.prop[0];
+            node.prop = node.prop.slice(1);
+          }
+          node.raws.between += this.spacesAndCommentsFromStart(tokens);
+          this.precheckMissedSemicolon(tokens);
+          for (let i = tokens.length - 1; i > 0; i--) {
+            token = tokens[i];
+            if (token[1] === "!important") {
+              node.important = true;
+              let string = this.stringFrom(tokens, i);
+              string = this.spacesFromEnd(tokens) + string;
+              if (string !== " !important") {
+                node.raws.important = string;
+              }
+              break;
+            } else if (token[1] === "important") {
+              let cache = tokens.slice(0);
+              let str = "";
+              for (let j = i; j > 0; j--) {
+                let type = cache[j][0];
+                if (str.trim().indexOf("!") === 0 && type !== "space") {
+                  break;
+                }
+                str = cache.pop()[1] + str;
+              }
+              if (str.trim().indexOf("!") === 0) {
+                node.important = true;
+                node.raws.important = str;
+                tokens = cache;
+              }
+            }
+            if (token[0] !== "space" && token[0] !== "comment") {
+              break;
+            }
+          }
+          this.raw(node, "value", tokens);
+          if (node.value.includes(":")) {
+            this.checkMissedSemicolon(tokens);
+          }
+          this.current = node;
+        }
+      }
+    };
+    module2.exports = ScssParser;
+  }
+});
+
+// node_modules/postcss-scss/lib/scss-parse.js
+var require_scss_parse = __commonJS({
+  "node_modules/postcss-scss/lib/scss-parse.js"(exports, module2) {
+    var { Input } = require_postcss();
+    var ScssParser = require_scss_parser();
+    module2.exports = function scssParse(scss, opts) {
+      let input = new Input(scss, opts);
+      let parser = new ScssParser(input);
+      parser.parse();
+      return parser.root;
+    };
+  }
+});
+
+// node_modules/postcss-scss/lib/scss-syntax.js
+var require_scss_syntax = __commonJS({
+  "node_modules/postcss-scss/lib/scss-syntax.js"(exports, module2) {
+    var stringify = require_scss_stringify();
+    var parse = require_scss_parse();
+    module2.exports = { parse, stringify };
+  }
+});
+
 // src/lib/parser.js
 var fs = require("fs");
 var postcss = require_postcss();
 var postcssImport = require_postcss_import();
 var postcssModules = require_build();
+var postcssScss = require_scss_syntax();
 var inputPath = process.argv[2];
 var outputPath = process.argv[3];
 if (!inputPath || !outputPath) {
@@ -14840,7 +15408,7 @@ postcss([
     // Export :global() classes too
     exportGlobals: true
   })
-]).process(css, { from: inputPath }).then(() => {
+]).process(css, { from: inputPath, syntax: postcssScss }).then(() => {
 }).catch((err) => {
   console.error("Error processing CSS:", err.message);
   process.exit(1);

@@ -6,6 +6,7 @@ const fs = require("fs");
 const postcss = require("postcss");
 const postcssImport = require("postcss-import");
 const postcssModules = require("postcss-modules");
+const postcssScss = require("postcss-scss");
 
 // Parse command line args
 const inputPath = process.argv[2];
@@ -30,7 +31,7 @@ postcss([
     exportGlobals: true,
   }),
 ])
-  .process(css, { from: inputPath })
+  .process(css, { from: inputPath, syntax: postcssScss })
   .then(() => {})
   .catch((err) => {
     console.error("Error processing CSS:", err.message);

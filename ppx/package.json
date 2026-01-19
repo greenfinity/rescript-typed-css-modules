@@ -16,7 +16,8 @@
   "dependencies": {
     "postcss": "^8.4.24",
     "postcss-import": "^16.0.0",
-    "postcss-modules": "^6.0.0"
+    "postcss-modules": "^6.0.0",
+    "postcss-scss": "^4.0.9"
   },
   "devDependencies": {
     "esbuild": "^0.18.10"
