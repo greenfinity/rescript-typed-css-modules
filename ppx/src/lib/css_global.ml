@@ -46,17 +46,13 @@ let expander ~ctxt var_name css_path =
       ptyp_object object_fields Closed
     in
 
-    (* For global CSS: Use %raw to generate the object literal *)
-    (* Generate: let css: <type> = %raw(`{"class1": "class1", ...}`) *)
-    let json_obj =
-      let pairs = class_names |> List.map (fun name ->
-        Printf.sprintf {|"%s": "%s"|} name name
-      ) in
-      "{" ^ String.concat ", " pairs ^ "}"
-    in
+    (* For global CSS: Use a Proxy on empty object that returns the key *)
+    (* This uses no memory regardless of how many classes exist *)
+    (* Generate: let css: <type> = %raw(`new Proxy({}, { get: (_, k) => k })`) *)
+    let proxy_js = {|new Proxy({}, { get: (_, k) => k })|} in
 
     let raw_extension =
-      pexp_extension ({ txt = "raw"; loc }, PStr [ pstr_eval (estring json_obj) [] ])
+      pexp_extension ({ txt = "raw"; loc }, PStr [ pstr_eval (estring proxy_js) [] ])
     in
 
     let typed_expr = pexp_constraint raw_extension object_type in
