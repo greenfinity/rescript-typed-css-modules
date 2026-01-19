@@ -1,0 +1,18 @@
+{
+  "name": "rescript-typed-css-ppx",
+  "version": "0.1.0",
+  "description": "PPX for type-safe CSS modules in ReScript",
+  "license": "MIT",
+  "esy": {
+    "build": "dune build -p rescript-typed-css-ppx"
+  },
+  "dependencies": {
+    "ocaml": "4.14.1000",
+    "@opam/dune": ">=3.8",
+    "@opam/ppxlib": "github:zth/ppxlib#32f83395fb89693a873541298b6367449f23bc4a"
+  },
+  "devDependencies": {},
+  "resolutions": {
+    "@opam/ppxlib": "github:zth/ppxlib#32f83395fb89693a873541298b6367449f23bc4a"
+  }
+}

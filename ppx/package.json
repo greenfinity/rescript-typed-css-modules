@@ -1,0 +1,24 @@
+{
+  "name": "rescript-typed-css-ppx",
+  "version": "0.1.0",
+  "description": "PPX for type-safe CSS modules in ReScript",
+  "license": "MIT",
+  "main": "ppx",
+  "files": [
+    "ppx",
+    "src/lib/parser.bundle.js"
+  ],
+  "scripts": {
+    "build:parser": "esbuild src/lib/parser.js --outfile=src/lib/parser.bundle.js --bundle --platform=node",
+    "build:ppx": "esy build",
+    "build": "npm run build:parser && npm run build:ppx"
+  },
+  "dependencies": {
+    "postcss": "^8.4.24",
+    "postcss-import": "^16.0.0",
+    "postcss-modules": "^6.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.18.10"
+  }
+}

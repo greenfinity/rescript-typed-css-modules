@@ -1,0 +1,6 @@
+(library
+ (name rescript_typed_css_ppx)
+ (public_name rescript-typed-css-ppx)
+ (kind ppx_rewriter)
+ (libraries ppxlib)
+ (preprocess (pps ppxlib.metaquot)))

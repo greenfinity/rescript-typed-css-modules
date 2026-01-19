@@ -1,0 +1,9 @@
+_build/
+_esy/
+node_modules/
+*.install
+.merlin
+src/lib/parser.bundle.js
+
+# Built PPX binary (should be built from source)
+ppx
