@@ -1,5 +1,6 @@
 (* CSS Module PPX extension - generates typed bindings with @module import *)
 (* Based on typed-css-classes by ribeirotomas1904 (MIT License) *)
+(* Wraps import with Proxy to support :global() classes *)
 
 open Ppxlib
 open Common
@@ -42,16 +43,19 @@ let expander ~ctxt var_name css_path =
       ptyp_object object_fields Closed
     in
 
+    (* Internal name for the raw import *)
+    let raw_var_name = "__css_" ^ var_name ^ "_raw" in
+
     (* @module("./path.css") attribute *)
     let module_attr =
       attribute ~name:{ txt = "module"; loc }
         ~payload:(PStr [ pstr_eval (estring css_path) [] ])
     in
 
-    (* external css: <object_type> = "default" *)
-    let value_description =
+    (* external __css_raw: <object_type> = "default" *)
+    let raw_value_description =
       {
-        pval_name = { txt = var_name; loc };
+        pval_name = { txt = raw_var_name; loc };
         pval_type = object_type;
         pval_prim = [ "default" ];
         pval_attributes = [ module_attr ];
@@ -59,7 +63,39 @@ let expander ~ctxt var_name css_path =
       }
     in
 
-    pstr_primitive value_description
+    let external_decl = pstr_primitive raw_value_description in
+
+    (* Proxy wrapper: new Proxy(obj, { get: (o, k) => o[k] || k }) *)
+    (* This handles :global() classes that aren't in the bundler's export *)
+    let proxy_js = Printf.sprintf
+      {|new Proxy(%s, { get: (o, k) => o[k] || k })|}
+      raw_var_name
+    in
+
+    let raw_extension =
+      pexp_extension ({ txt = "raw"; loc }, PStr [ pstr_eval (estring proxy_js) [] ])
+    in
+
+    let typed_expr = pexp_constraint raw_extension object_type in
+
+    let value_binding =
+      {
+        pvb_pat = ppat_var { txt = var_name; loc };
+        pvb_expr = typed_expr;
+        pvb_attributes = [];
+        pvb_loc = loc;
+      }
+    in
+
+    let let_decl = pstr_value Nonrecursive [ value_binding ] in
+
+    (* Return both declarations as an include of a module *)
+    (* We need to return multiple structure items, so we wrap in a module *)
+    pstr_include {
+      pincl_mod = pmod_structure [ external_decl; let_decl ];
+      pincl_loc = loc;
+      pincl_attributes = [];
+    }
 
 let extension =
   Extension.V3.declare extension_name Extension.Context.structure_item extractor
