@@ -1,7 +1,7 @@
 {
   "name": "@greenfinity/rescript-typed-css-modules",
   "description": "Typed CSS Modules for ReScript",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "MIT",
   "type": "module",
   "bin": {
