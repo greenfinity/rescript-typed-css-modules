@@ -8,9 +8,9 @@ type t = {
   "shared-class": string
 }
 
+@module("./GlobalTypes.global.css") external _imported: t = "default"
+
 // Access class names from the fields of the css object.
-// Import is not done, the css has to be manually imported
-// from the top of the component hierarchy.
 // For all classes, the class name is returned as-is: no scoping.
 // Classes from @import are also available.
 

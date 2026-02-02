@@ -24,15 +24,13 @@ Only tested with Next.js and might not work with other frameworks out of the box
 
 ### Why global CSS support?
 
+TL;DR: Global CSS files behave just like CSS Modules, except their class names are **not hashed** but kept as-is.
+
+Support for global CSS is provided in addition to CSS Modules.
+
 The use case is to access classes in a type safe way from third party css libraries, that emit HTML markup with predefined class names without the use of css modules (e.g. React Aria Components).
 
-Global CSS files (`.global.css` / `.global.scss`) also get type-safe bindings, but they are not imported, and their class names are **not hashed**. This is useful when working with third-party libraries (such as React Aria Components) that emit HTML markup with predefined class names that you need to style.
-
-Even though global CSS classes aren't scoped, generating typed bindings provides the benefit of compile-time checking that class names exist.
-
-The imports are not done because these css typically has to be imported from the top of the component hierarchy. So the import has to be done manually. To get type safe access, simply rename the file to `.global.css` (or create one and import the original css from it).
-
-(Remark: we could also provide a way to import the css automatically, but this would open issues with removing duplicates during bundling, and handling the css on route changes. NextJs does not support these use cases out of the box, so we revert to the manual import for global css.)
+Even though global CSS classes aren't scoped, generating typed bindings provides the benefit of compile-time checking that class names exist. If the framework you are using supports bundling by routes (such as NextJS), the global css files will also be bundled together with JavaScript. Regarding duplicates, they should be handled the same way as CSS Modules, or ordinary JavaScript imports. (Checked with NextJS with both the Webpack and the Turbopack builder.)
 
 ## Installation
 
@@ -175,6 +173,7 @@ type t = {
   "light-mode": string,
   "primary-color": string
 }
+@module("./Button.module.css") external css: t = "default"
 
 // Class names are returned as-is (no hashing)
 let css = ...
@@ -183,10 +182,7 @@ let css = ...
 Usage:
 
 ```rescript
-// Import the CSS manually at your app root
-%%raw(`import "./Theme.global.css"`)
-
-// Then use type-safe class names anywhere
+// Use type-safe class names anywhere
 <div className={Theme_CssGlobal.css["dark-mode"]}>
 ```
 

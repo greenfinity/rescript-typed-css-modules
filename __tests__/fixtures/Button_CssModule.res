@@ -7,6 +7,7 @@ type t = {
   "btn-sm": string,
   "disabled": string
 }
+
 @module("./Button.module.css") external css: t = "default"
 
 // Access class names from the fields of the css object.
@@ -14,7 +15,6 @@ type t = {
 // For :global() classes, the class name is returned as-is: no scoping.
 // Classes from @import are also available.
 
-@module("./Button.module.css") external _imported: t = "default"
 @new external proxy: ('a, 'b) => 'c = "Proxy"
 %%private(
   external toDict: t => dict<string> = "%identity"

@@ -9,7 +9,14 @@ module Meow = {
     default?: bool,
   }
 
-  type flags = {"watch": flag, "outputDir": flag, "skipInitial": flag, "force": flag, "silent": flag, "quiet": flag}
+  type flags = {
+    "watch": flag,
+    "outputDir": flag,
+    "skipInitial": flag,
+    "force": flag,
+    "silent": flag,
+    "quiet": flag,
+  }
 
   type importMeta
 
@@ -21,7 +28,14 @@ module Meow = {
 
   type result = {
     input: array<string>,
-    flags: {"watch": bool, "outputDir": option<string>, "skipInitial": bool, "force": bool, "silent": bool, "quiet": bool},
+    flags: {
+      "watch": bool,
+      "outputDir": option<string>,
+      "skipInitial": bool,
+      "force": bool,
+      "silent": bool,
+      "quiet": bool,
+    },
     showHelp: unit => unit,
   }
 
@@ -109,14 +123,14 @@ ${recordFields->Array.join(",\n")}
     // CSS Module import will get access to the object mapping returned
     // by the import. Hashing will happen automatically.
     prelude +
-    `@module("./${baseName}") external css: t = "default"
+    `
+@module("./${baseName}") external css: t = "default"
 
 // Access class names from the fields of the css object.
 // For scoped classses, the hashed class name is returned.
 // For :global() classes, the class name is returned as-is: no scoping.
 // Classes from @import are also available.
 
-@module("./${baseName}") external _imported: t = "default"
 @new external proxy: ('a, 'b) => 'c = "Proxy"
 %%private(
   external toDict: t => dict<string> = "%identity"
@@ -139,11 +153,11 @@ let css = withProxy(css)
 `
   | Global =>
     // Global css will return the css class name as-is: no scoping.
-    // Import is not done.
-    prelude + `
+    prelude +
+    `
+@module("./${baseName}") external _imported: t = "default"
+
 // Access class names from the fields of the css object.
-// Import is not done, the css has to be manually imported
-// from the top of the component hierarchy.
 // For all classes, the class name is returned as-is: no scoping.
 // Classes from @import are also available.
 
@@ -238,7 +252,9 @@ let processFile = async (cssFilePath, outputDir, ~force=false, ~silent=false, ~q
 
       NodeJs.Fs.writeFileSync(outputPath, NodeJs.Buffer.fromString(bindings))
       if !quiet {
-        Console.log(`✅ Generated ${outputPath} (${classNames->Array.length->Int.toString} classes)`)
+        Console.log(
+          `✅ Generated ${outputPath} (${classNames->Array.length->Int.toString} classes)`,
+        )
       }
 
       (outputPath, classNames)->Some
